@@ -1,16 +1,15 @@
-import { NODE_ENV } from '$env/static/private';
-import { error, type Cookies, type Handle } from '@sveltejs/kit';
+import { type Cookies, type Handle } from '@sveltejs/kit';
 import { v4 as uuidv4 } from 'uuid';
 
 const SESSION_EXPIRATION_SECONDS = 60 * 10;
 const INTERVAL_DURATION_MILLISECONDS = 1000 * 60;
 
-type SessionData<T = ReadableStream<Uint8Array> | string | null> = {
+type SessionDataProps<T = ReadableStream<Uint8Array> | string | null> = {
 	expiresAt: number;
 	data?: T;
 };
 
-const sessionMap = new Map<string, SessionData>();
+const sessionMap = new Map<string, SessionDataProps>();
 
 function deleteExpiredSessions() {
 	const CURRENT_TIME_SECONDS = Math.floor(Date.now() / 1000);
@@ -25,13 +24,13 @@ setInterval(() => {
 	deleteExpiredSessions();
 }, INTERVAL_DURATION_MILLISECONDS);
 
-type ParsedCookieData = {
+type ParsedCookieDataProps = {
 	sessionId: string;
 	expiresAt?: number;
 };
 
 function parseSessionCookie(sessionCookie: string) {
-	const parsedCookie: ParsedCookieData = JSON.parse(sessionCookie);
+	const parsedCookie: ParsedCookieDataProps = JSON.parse(sessionCookie);
 	const { sessionId, expiresAt } = parsedCookie;
 	return { sessionId, expiresAt };
 }
@@ -50,23 +49,23 @@ function validateSessionCookie({ cookies, sessionId, expiresAt }: CookieProps) {
 			cookies.delete('sc', {
 				path: '/',
 			});
-			throw error(401, 'Unauthorized');
+			throw new Error('Unauthorized', { cause: { status: 401 } });
 		}
 	}
 }
 
-type SessionRequestData = {
+type SessionRequestDataProps = {
 	sessionData?: ReadableStream<Uint8Array> | string;
 };
 
 async function parseRequest(request: Request) {
-	const sessionRequest: SessionRequestData = {};
+	const sessionRequest: SessionRequestDataProps = {};
 
 	if (request.method === 'POST') {
 		if (request.body) {
 			sessionRequest.sessionData = request.body;
 		} else {
-			const data: SessionRequestData = await request.json();
+			const data: SessionRequestDataProps = await request.json();
 			sessionRequest.sessionData = data.sessionData;
 		}
 	}
@@ -74,14 +73,17 @@ async function parseRequest(request: Request) {
 	return { sessionRequest };
 }
 
-type CreateSessionData = {
+type CreateSessionDataProps = {
 	sessionId: string;
-	sessionRequest: SessionRequestData;
+	sessionRequest: SessionRequestDataProps;
 };
 
 type LocalsSessionData = NonNullable<App.Locals['sessionData']>;
 
-function createSessionData({ sessionId, sessionRequest }: CreateSessionData) {
+function createSessionData({
+	sessionId,
+	sessionRequest,
+}: CreateSessionDataProps) {
 	const CURRENT_TIME_SECONDS = Math.floor(Date.now() / 1000);
 	const SESSION_LIFECYCLE = CURRENT_TIME_SECONDS + SESSION_EXPIRATION_SECONDS;
 	const SESSION_EXPIRATION_DATE = new Date(SESSION_LIFECYCLE * 1000);
@@ -95,33 +97,47 @@ function createSessionData({ sessionId, sessionRequest }: CreateSessionData) {
 	return {
 		sessionData,
 		SESSION_EXPIRATION_DATE,
+		SESSION_LIFECYCLE,
 	};
 }
 
-type SetSessionData = {
+type SetSessionDataProps = {
 	cookies: Cookies;
 	sessionId: string;
 	SESSION_EXPIRATION_DATE: Date;
+	SESSION_LIFECYCLE: number;
 	locals: App.Locals;
-	sessionData: LocalsSessionData;
+	sessionData: SessionDataProps;
 };
 
 function setSessionData({
 	cookies,
 	sessionId,
 	SESSION_EXPIRATION_DATE,
+	SESSION_LIFECYCLE,
 	locals,
 	sessionData,
-}: SetSessionData) {
-	cookies.set('sc', sessionId, {
-		secure: NODE_ENV === 'production',
+}: SetSessionDataProps) {
+	const cookieValue = JSON.stringify({
+		sessionId,
+		expiresAt: SESSION_LIFECYCLE,
+	});
+
+	cookies.set('sc', cookieValue, {
+		secure: true,
 		httpOnly: true,
 		sameSite: 'strict',
 		expires: SESSION_EXPIRATION_DATE,
 		path: '/',
 	});
+
 	sessionMap.set(sessionId, sessionData);
-	locals.sessionData = sessionData;
+
+	locals.sessionData = {
+		sessionId,
+		expiresAt: SESSION_LIFECYCLE,
+		data: sessionData.data,
+	};
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
@@ -145,15 +161,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const { sessionRequest } = await parseRequest(request);
 
-	const { sessionData, SESSION_EXPIRATION_DATE } = createSessionData({
-		sessionId,
-		sessionRequest,
-	});
+	const { sessionData, SESSION_EXPIRATION_DATE, SESSION_LIFECYCLE } =
+		createSessionData({
+			sessionId,
+			sessionRequest,
+		});
 
 	setSessionData({
 		cookies,
 		sessionId,
 		SESSION_EXPIRATION_DATE,
+		SESSION_LIFECYCLE,
 		locals,
 		sessionData,
 	});
