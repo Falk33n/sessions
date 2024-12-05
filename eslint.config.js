@@ -22,6 +22,7 @@ export default ts.config(
 				...globals.node,
 			},
 		},
+		ignores: ['node_modules'],
 	},
 	{
 		files: ['**/*.svelte'],
