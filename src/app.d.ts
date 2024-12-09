@@ -1,3 +1,10 @@
+type FileMetaData = {
+	name: string;
+	type: string;
+	size: number;
+	content: string | ReadableStream<Uint8Array>;
+};
+
 declare global {
 	namespace App {
 		// interface Error {}
@@ -5,7 +12,9 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 
-		interface Locals<T = ReadableStream<Uint8Array> | string | null> {
+		interface Locals<
+			T = ReadableStream<Uint8Array> | FileMetaData | string | null,
+		> {
 			sessionData?: {
 				sessionId: string;
 				expiresAt: number;
