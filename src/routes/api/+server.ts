@@ -72,8 +72,9 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 		}
 	}
 
-	const isNewSession = !sessionId;
-	if (isNewSession) {
+	const responseMessage = !sessionId ? 'Created Session.' : 'Updated Session.';
+
+	if (!sessionId) {
 		sessionId = uuidv4();
 	}
 
@@ -96,7 +97,7 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 
 	sessionData.files.push({ name: fileName, data: buffer });
 
-	sessionMap.set(sessionId!, sessionData);
+	sessionMap.set(sessionId, sessionData);
 
 	const cookieData = JSON.stringify({
 		sessionId,
@@ -113,7 +114,21 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 
 	cookies.set('sc', cookieData, COOKIE_OPTIONS);
 
-	return json(isNewSession ? 'Created Session.' : 'Updated Session.', {
+	function logAllSessions(sessionMap: SessionMap): void {
+		console.log('Logging all sessions and their files:');
+		for (const [sessionId, sessionData] of sessionMap.entries()) {
+			console.log(`Session ID: ${sessionId}`);
+			console.log(`Expires At: ${sessionData.expiresAt.toISOString()}`);
+			console.log('Files:');
+			sessionData.files.forEach((file, index) => {
+				console.log(`  ${index + 1}. File Name: ${file.name}`);
+			});
+			console.log('--------------------------------');
+		}
+	}
+	logAllSessions(sessionMap);
+
+	return json(responseMessage, {
 		status: 200,
 	});
 };
