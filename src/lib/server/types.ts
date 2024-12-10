@@ -1,15 +1,22 @@
-export type SessionDataProps<T = Uint8Array | null> = {
-	expiresAt: number;
-	data?: T;
+type UploadedFile = { name: string; data: Uint8Array };
+
+export type SessionData<T = UploadedFile[]> = {
+	expiresAt: Date;
+	files: T;
 };
 
-export type SessionMapType = Map<string, SessionDataProps<Uint8Array | null>>;
+export type SessionMap = Map<string, SessionData<UploadedFile[]>>;
 
-export type CookieData = {
+export type SessionCookie = {
 	sessionId?: string;
-	expiresAt?: number;
+	expiresAt?: Date;
 };
 
-export type SessionRequestPayload = {
-	sessionData?: Uint8Array | null;
+export type UploadedFilePayload = {
+	files?: UploadedFile[] | null;
+};
+
+export type ParsedFileRequest = {
+	buffer: Uint8Array | null;
+	fileName: string | null;
 };

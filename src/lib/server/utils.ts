@@ -1,74 +1,90 @@
-import type { CookieData, SessionMapType } from '$lib/server/types';
+import type { SessionCookie, SessionMap } from '$lib/server/types';
+import { error } from '@sveltejs/kit';
 
-export function deleteExpiredSessions(map: SessionMapType) {
-	const CURRENT_TIME_SECONDS = Math.floor(Date.now() / 1000);
-	for (const [sessionId, session] of map) {
-		if (session.expiresAt < CURRENT_TIME_SECONDS) {
-			map.delete(sessionId);
+export function removeExpiredSessions(sessionMap: SessionMap) {
+	const currentTime = Date.now();
+	for (const [sessionId, session] of sessionMap) {
+		if (session.expiresAt.getTime() < currentTime) {
+			sessionMap.delete(sessionId);
 		}
 	}
 }
 
-export function parseCookie(sessionCookie: string) {
-	const parsedCookie: CookieData = JSON.parse(sessionCookie);
+export function parseSessionCookie(sessionCookie: string): SessionCookie {
+	const parsedCookie: SessionCookie = JSON.parse(sessionCookie);
 	const { sessionId, expiresAt } = parsedCookie;
-	return { sessionId, expiresAt };
+
+	return { sessionId, expiresAt: expiresAt ? new Date(expiresAt) : undefined };
 }
 
 export function validateSessionCookie(
-	map: SessionMapType,
-	cookieData: CookieData,
+	map: SessionMap,
+	cookieData: SessionCookie,
 ) {
-	if (
-		!cookieData.sessionId ||
-		!cookieData.expiresAt ||
-		!map.has(cookieData.sessionId)
-	) {
+	if (!cookieData.sessionId || !cookieData.expiresAt) {
 		return false;
 	}
 
 	const sessionData = map.get(cookieData.sessionId);
-	if (!sessionData || cookieData.expiresAt !== sessionData.expiresAt) {
+	if (!sessionData) {
 		return false;
 	}
 
-	const CURRENT_TIME_SECONDS = Math.floor(Date.now() / 1000);
-	if (sessionData.expiresAt < CURRENT_TIME_SECONDS) {
+	const currentTime = new Date();
+	if (
+		cookieData.expiresAt.getTime() !== sessionData.expiresAt.getTime() ||
+		sessionData.expiresAt < currentTime
+	) {
 		return false;
 	}
 
 	return true;
 }
 
-export function* generateChunks(buffer: Uint8Array) {
-	const BASE_CHUNK_SIZE_BYTES = 128;
-	const MAX_CHUNK_SIZE_KB = 6 * 1024;
-	const LARGE_FILE_THRESHOLD_MB = 10 * 1024 * 1024;
-
-	let chunkSize = BASE_CHUNK_SIZE_BYTES;
-	if (buffer.length > LARGE_FILE_THRESHOLD_MB) {
-		chunkSize = Math.min(MAX_CHUNK_SIZE_KB, Math.ceil(buffer.length / 100));
+export function* generateChunks(
+	buffer: Uint8Array,
+	{
+		baseChunkSizeBytes = 128,
+		maxChunkSizeKB = 6 * 1024,
+		largeFileThresholdMB = 10 * 1024 * 1024,
+	} = {},
+) {
+	if (buffer.length === 0) {
+		throw error(400, 'Buffer is empty. Cannot generate chunks.');
 	}
 
-	for (let offset = 0; offset < buffer.length; offset += chunkSize) {
-		yield buffer.slice(offset, offset + chunkSize);
+	let currentChunkSize = baseChunkSizeBytes;
+	if (buffer.length > largeFileThresholdMB) {
+		currentChunkSize = Math.min(maxChunkSizeKB, Math.ceil(buffer.length / 100));
+	}
+
+	for (
+		let currentOffset = 0;
+		currentOffset < buffer.length;
+		currentOffset += currentChunkSize
+	) {
+		yield buffer.slice(currentOffset, currentOffset + currentChunkSize);
 	}
 }
 
-export function generateReadableStream(buffer: Uint8Array) {
+export function generateReadableStream(
+	buffer: Uint8Array,
+	{ timeoutDurationMs = 1 } = {},
+): ReadableStream<Uint8Array> {
 	return new ReadableStream({
 		start(controller) {
 			const generator = generateChunks(buffer);
+
 			const push = () => {
-				const next = generator.next();
-				if (next.done) {
+				const { value, done } = generator.next();
+				if (done) {
 					controller.close();
 				} else {
-					const TIMEOUT_DURATION_MS = 1;
-					controller.enqueue(next.value);
-					setTimeout(push, TIMEOUT_DURATION_MS);
+					controller.enqueue(value);
+					setTimeout(push, timeoutDurationMs);
 				}
 			};
+
 			push();
 		},
 	});

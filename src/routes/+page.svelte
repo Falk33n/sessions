@@ -1,17 +1,26 @@
 <script lang="ts">
 	let file = $state<File | null>(null);
+	let filenames = $state<string[]>([]);
 	let chunks = $state<string[]>([]);
 	let isUploading = $state<boolean>(false);
 	let postTime = $state<string | null>(null);
 	let getTime = $state<string | null>(null);
+	let selectedFile = $state<string | null>(null);
 
-	async function getData() {
-		chunks = []; // Reset chunks
-		const startTime = Date.now(); // Track start time
+	async function getData(fileName: string) {
+		if (!fileName) {
+			alert('Please select a file to stream.');
+			return;
+		}
+
+		chunks = [];
+		const startTime = Date.now();
 
 		try {
-			const response = await fetch('/api', { method: 'GET' });
-
+			const response = await fetch(
+				`/api?file=${encodeURIComponent(fileName)}`,
+				{ method: 'GET' },
+			);
 			if (!response.ok) {
 				chunks = ['Error fetching data!'];
 				return;
@@ -32,10 +41,9 @@
 				}
 			}
 		} catch (err) {
-			console.error('Error during fetch:', err);
 			chunks = ['Error during fetch!'];
+			throw err;
 		} finally {
-			// Calculate elapsed time in minutes and seconds
 			const endTime = Date.now();
 			const elapsedSeconds = Math.floor((endTime - startTime) / 1000);
 			const minutes = Math.floor(elapsedSeconds / 60);
@@ -46,26 +54,31 @@
 
 	async function uploadFile(e: Event) {
 		e.preventDefault();
-
 		if (!file) return;
 
-		isUploading = true; // Set uploading state to true
-		const startTime = Date.now(); // Track start time
+		isUploading = true;
+		const startTime = Date.now();
 
 		const formData = new FormData();
 		formData.append('file', file);
 
 		try {
-			await fetch('/api', {
+			const response = await fetch('/api', {
 				method: 'POST',
 				body: formData,
+				headers: {
+					'X-File-Name': file.name,
+				},
 			});
+			if (response.ok) {
+				filenames = [...filenames, file.name];
+			} else {
+				throw new Error('File upload failed.');
+			}
 		} catch (err) {
-			console.error('Error during file upload:', err);
+			throw err;
 		} finally {
-			isUploading = false; // Reset uploading state
-
-			// Calculate elapsed time in minutes and seconds
+			isUploading = false;
 			const endTime = Date.now();
 			const elapsedSeconds = Math.floor((endTime - startTime) / 1000);
 			const minutes = Math.floor(elapsedSeconds / 60);
@@ -96,18 +109,40 @@
 	</button>
 </form>
 
+<div class="my-16">
+	<h2>Uploaded Files</h2>
+	<ul>
+		{#each filenames as filename}
+			<li>
+				<label>
+					<input
+						type="radio"
+						name="selectedFile"
+						bind:group={selectedFile}
+						value={filename}
+					/>
+					{filename}
+				</label>
+			</li>
+		{/each}
+	</ul>
+</div>
+
 <form
 	method="GET"
 	action="/api"
 	onsubmit={async (e) => {
 		e.preventDefault();
-		await getData();
+		if (!selectedFile) return;
+		await getData(selectedFile);
 	}}
 >
 	<button
 		type="submit"
-		class="bg-blue-500 px-4 py-2">Submit get</button
+		class="bg-blue-500 px-4 py-2"
 	>
+		Stream Selected File
+	</button>
 </form>
 
 <p class="my-16">
