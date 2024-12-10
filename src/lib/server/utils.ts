@@ -1,5 +1,4 @@
 import type { SessionCookie, SessionMap } from '$lib/server/types';
-import { error } from '@sveltejs/kit';
 
 export function removeExpiredSessions(sessionMap: SessionMap) {
 	const currentTime = Date.now();
@@ -49,10 +48,6 @@ export function* generateChunks(
 		largeFileThresholdMB = 10 * 1024 * 1024,
 	} = {},
 ) {
-	if (buffer.length === 0) {
-		throw error(400, 'Buffer is empty. Cannot generate chunks.');
-	}
-
 	let currentChunkSize = baseChunkSizeBytes;
 	if (buffer.length > largeFileThresholdMB) {
 		currentChunkSize = Math.min(maxChunkSizeKB, Math.ceil(buffer.length / 100));

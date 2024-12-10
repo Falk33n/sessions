@@ -46,6 +46,10 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 		throw error(400, `Missing ${missingField}.`);
 	}
 
+	if (buffer.length === 0) {
+		throw error(400, 'File is empty.');
+	}
+
 	const SESSION_EXPIRATION_DURATION_MS = 10 * 60 * 1000;
 	const SESSION_EXPIRATION_DATE = new Date(
 		Date.now() + SESSION_EXPIRATION_DURATION_MS,
